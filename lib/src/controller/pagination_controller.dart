@@ -142,6 +142,16 @@ class PaginationController<PageKey, Item> extends ValueNotifier<PaginationState<
     );
   }
 
+  Future<void> prefetchPrevious({String reason = "prefetch"}) async {
+    if (!value.hasPrevious || value.isLoading) return;
+
+    await _fetch(
+      direction: PaginationDirection.previous,
+      reason: reason,
+      silent: true,
+    );
+  }
+
   Future<void> fetchPrevious({String reason = "manual"}) async {
     if (!value.hasPrevious || value.isLoading) return;
 

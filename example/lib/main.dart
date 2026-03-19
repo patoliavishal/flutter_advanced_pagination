@@ -30,6 +30,8 @@ class ShowcaseHome extends StatelessWidget {
       _DemoEntry("Cache + Stale-While-Revalidate", () => const CacheDemoPage()),
       _DemoEntry("Offset-based Pagination", () => const OffsetDemoPage()),
       _DemoEntry("Cursor-based Pagination", () => const CursorDemoPage()),
+      _DemoEntry("Retry Footer + Separators", () => const RetryFooterDemoPage()),
+      _DemoEntry("Sliver Empty/Error Demo", () => const SliverStateDemoPage()),
       _DemoEntry("Sliver Grid Demo", () => const SliverGridDemoPage()),
       _DemoEntry("Bloc Pagination Demo", () => const BlocDemoPage()),
       _DemoEntry("PagedLayoutBuilder States", () => const LayoutBuilderDemoPage()),
@@ -308,6 +310,206 @@ class _CursorDemoPageState extends State<CursorDemoPage> {
     );
   }
 }
+
+class RetryFooterDemoPage extends StatefulWidget {
+  const RetryFooterDemoPage({super.key});
+
+  @override
+  State<RetryFooterDemoPage> createState() => _RetryFooterDemoPageState();
+}
+
+class _RetryFooterDemoPageState extends State<RetryFooterDemoPage> {
+  late final PaginationController<int, int> controller;
+  bool _failOnce = true;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = PaginationController.pageBased(firstPageKey: 1, pageSize: 15, fetchPage: _fetchPage);
+  }
+
+  Future<PageResult<int, int>> _fetchPage(PaginationRequest<int> request) async {
+    await Future.delayed(const Duration(milliseconds: 600));
+    final int page = request.pageKey ?? 1;
+
+    if (_failOnce && page == 3) {
+      _failOnce = false;
+      throw Exception("Simulated load-more failure");
+    }
+
+    final items = List.generate(request.pageSize, (index) => (page - 1) * request.pageSize + index);
+
+    return PageResult(items: items, hasNext: page < 6, hasPrevious: page > 1);
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Retry Footer + Separators")),
+      body: PagedListView<int, int>(
+        controller: controller,
+        separatorBuilder: (context, index) => const Divider(height: 1),
+        loadMoreErrorBuilder: (context, error) {
+          return Padding(
+            padding: const EdgeInsets.all(16),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(error?.toString() ?? "Load more failed"),
+                  const SizedBox(height: 8),
+                  TextButton(onPressed: controller.retry, child: const Text("Retry loading more")),
+                ],
+              ),
+            ),
+          );
+        },
+        itemBuilder: (context, item, index) => ListTile(title: Text("Item $item")),
+      ),
+    );
+  }
+}
+
+class SliverStateDemoPage extends StatefulWidget {
+  const SliverStateDemoPage({super.key});
+
+  @override
+  State<SliverStateDemoPage> createState() => _SliverStateDemoPageState();
+}
+
+class _SliverStateDemoPageState extends State<SliverStateDemoPage> {
+  late final PaginationController<int, int> controller;
+  _SliverDemoMode _mode = _SliverDemoMode.success;
+  bool _showGrid = false;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = PaginationController.pageBased(firstPageKey: 1, pageSize: 12, fetchPage: _fetchPage);
+    WidgetsBinding.instance.addPostFrameCallback((_) => controller.refresh(reason: "initial"));
+  }
+
+  Future<PageResult<int, int>> _fetchPage(PaginationRequest<int> request) async {
+    await Future.delayed(const Duration(milliseconds: 600));
+
+    switch (_mode) {
+      case _SliverDemoMode.success:
+        final items = List.generate(request.pageSize, (index) => index + 1);
+        return PageResult(items: items, hasNext: false, hasPrevious: false);
+      case _SliverDemoMode.empty:
+        return const PageResult(items: [], hasNext: false, hasPrevious: false);
+      case _SliverDemoMode.error:
+        throw Exception("Sliver demo error");
+    }
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: CustomScrollView(
+        slivers: [
+          SliverAppBar(title: const Text("Sliver Empty/Error Demo"), pinned: true),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  const Text("Select state:"),
+                  _buildModeChip(_SliverDemoMode.success, "Success"),
+                  _buildModeChip(_SliverDemoMode.empty, "Empty"),
+                  _buildModeChip(_SliverDemoMode.error, "Error"),
+                  FilterChip(
+                    label: const Text("Show Grid"),
+                    selected: _showGrid,
+                    onSelected: (value) {
+                      setState(() {
+                        _showGrid = value;
+                      });
+                    },
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => controller.refresh(reason: "manual"),
+                    icon: const Icon(Icons.refresh),
+                    label: const Text("Reload"),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SliverToBoxAdapter(child: Divider(height: 1)),
+          if (!_showGrid)
+            PagedSliverList<int, int>(
+              controller: controller,
+              emptyBuilder: (_) => const Center(child: Text("No items")),
+              errorBuilder: (_, error) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(error?.toString() ?? "Something went wrong"),
+                      const SizedBox(height: 12),
+                      ElevatedButton(onPressed: () => controller.refresh(), child: const Text("Retry")),
+                    ],
+                  ),
+                );
+              },
+              itemBuilder: (context, item, index) => ListTile(title: Text("Item $item")),
+            ),
+          if (_showGrid)
+            PagedSliverGrid<int, int>(
+              controller: controller,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisSpacing: 8, crossAxisSpacing: 8, childAspectRatio: 1.6),
+              emptyBuilder: (_) => const Center(child: Text("No items")),
+              errorBuilder: (_, error) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(error?.toString() ?? "Something went wrong"),
+                      const SizedBox(height: 12),
+                      ElevatedButton(onPressed: () => controller.refresh(), child: const Text("Retry")),
+                    ],
+                  ),
+                );
+              },
+              itemBuilder: (context, item, index) => Card(child: Center(child: Text("Grid $item"))),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModeChip(_SliverDemoMode mode, String label) {
+    final bool selected = _mode == mode;
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: (_) {
+        setState(() {
+          _mode = mode;
+        });
+        controller.refresh(reason: "mode_$label");
+      },
+    );
+  }
+}
+
+enum _SliverDemoMode { success, empty, error }
 
 class SliverGridDemoPage extends StatefulWidget {
   const SliverGridDemoPage({super.key});
