@@ -1,18 +1,18 @@
 name: advanced_pagination
 description: "Controller-first pagination for Flutter with page/offset/cursor support, list/grid/sliver widgets, cache + prefetch, and customizable states."
-version: 0.1.0
-homepage: https://github.com/patoliavishal/flutter_advanced_paginatio
-repository: https://github.com/patoliavishal/flutter_advanced_paginatio
-issue_tracker: https://github.com/patoliavishal/flutter_advanced_paginatio/issues
+version: 0.2.0
+homepage: https://github.com/patoliavishal/flutter_advanced_pagination
+repository: https://github.com/patoliavishal/flutter_advanced_pagination
+issue_tracker: https://github.com/patoliavishal/flutter_advanced_pagination/issues
 topics:
   - pagination
   - infinite-scroll
-  - flutter
-  - listview
-  - gridview
+  - lazy-loading
+  - load-more
+  - pull-to-refresh
 
 environment:
-  sdk: ^3.10.0
+  sdk: ^3.11.0
   flutter: ">=1.17.0"
 
 dependencies:
