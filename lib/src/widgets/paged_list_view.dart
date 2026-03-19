@@ -8,9 +8,12 @@ class PagedListView<PageKey, Item> extends StatefulWidget {
   final Widget Function(BuildContext, Item, int) itemBuilder;
   final Widget Function(BuildContext, PaginationStatus)? statusBuilder;
   final WidgetBuilder? loadingBuilder;
+  final IndexedWidgetBuilder? separatorBuilder;
+  final Widget Function(BuildContext, Object?)? loadMoreErrorBuilder;
   final ScrollController? scrollController;
   final bool enableRefresh;
   final bool autoLoad;
+  final bool reverse;
   final double preloadOffset;
   final bool enableScrollPrefetch;
   final double prefetchOffset;
@@ -21,9 +24,12 @@ class PagedListView<PageKey, Item> extends StatefulWidget {
     required this.itemBuilder,
     this.statusBuilder,
     this.loadingBuilder,
+    this.separatorBuilder,
+    this.loadMoreErrorBuilder,
     this.scrollController,
     this.enableRefresh = true,
     this.autoLoad = true,
+    this.reverse = false,
     this.preloadOffset = 200,
     this.enableScrollPrefetch = false,
     this.prefetchOffset = 600,
@@ -106,22 +112,41 @@ class _PagedListViewState<PageKey, Item> extends State<PagedListView<PageKey, It
     }
 
     final bool showLoader = state.hasNext && state.status == PaginationStatus.loadingMore;
-    final int itemCount = state.items.length + (showLoader ? 1 : 0);
+    final bool showRetryFooter = state.items.isNotEmpty && state.status == PaginationStatus.error && state.hasNext;
+    final int itemCount = state.items.length + ((showLoader || showRetryFooter) ? 1 : 0);
 
-    Widget list = ListView.builder(
-      controller: _scrollController,
-      itemCount: itemCount,
-      itemBuilder: (context, index) {
-        if (index < state.items.length) {
-          return widget.itemBuilder(context, state.items[index], index);
-        }
+    Widget buildItem(BuildContext context, int index) {
+      if (index < state.items.length) {
+        return widget.itemBuilder(context, state.items[index], index);
+      }
 
-        return Padding(
-          padding: const EdgeInsets.all(16),
-          child: Center(child: _buildLoader(context)),
-        );
-      },
-    );
+      if (showRetryFooter) {
+        return _buildLoadMoreError(context, state.error);
+      }
+
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: Center(child: _buildLoader(context)),
+      );
+    }
+
+    Widget list;
+    if (widget.separatorBuilder == null) {
+      list = ListView.builder(
+        controller: _scrollController,
+        reverse: widget.reverse,
+        itemCount: itemCount,
+        itemBuilder: buildItem,
+      );
+    } else {
+      list = ListView.separated(
+        controller: _scrollController,
+        reverse: widget.reverse,
+        itemCount: itemCount,
+        itemBuilder: buildItem,
+        separatorBuilder: widget.separatorBuilder!,
+      );
+    }
 
     if (!widget.enableRefresh) return list;
 
@@ -134,15 +159,26 @@ class _PagedListViewState<PageKey, Item> extends State<PagedListView<PageKey, It
   void _onScroll() {
     if (!_scrollController.hasClients) return;
 
-    final threshold = _scrollController.position.maxScrollExtent - widget.preloadOffset;
-    final prefetchThreshold = _scrollController.position.maxScrollExtent - widget.prefetchOffset;
+    final position = _scrollController.position;
+    final bool shouldPrefetch = widget.enableScrollPrefetch
+        ? (widget.reverse ? position.extentBefore <= widget.prefetchOffset : position.extentAfter <= widget.prefetchOffset)
+        : false;
+    final bool shouldLoad = widget.reverse ? position.extentBefore <= widget.preloadOffset : position.extentAfter <= widget.preloadOffset;
 
-    if (widget.enableScrollPrefetch && _scrollController.position.pixels >= prefetchThreshold) {
-      widget.controller.prefetchNext(reason: "scroll_prefetch");
+    if (shouldPrefetch) {
+      if (widget.reverse) {
+        widget.controller.prefetchPrevious(reason: "scroll_prefetch");
+      } else {
+        widget.controller.prefetchNext(reason: "scroll_prefetch");
+      }
     }
 
-    if (_scrollController.position.pixels >= threshold) {
-      widget.controller.fetchNext(reason: "auto");
+    if (shouldLoad) {
+      if (widget.reverse) {
+        widget.controller.fetchPrevious(reason: "auto");
+      } else {
+        widget.controller.fetchNext(reason: "auto");
+      }
     }
   }
 
@@ -157,6 +193,26 @@ class _PagedListViewState<PageKey, Item> extends State<PagedListView<PageKey, It
 
   Widget _buildLoader(BuildContext context) {
     return widget.loadingBuilder?.call(context) ?? const CircularProgressIndicator();
+  }
+
+  Widget _buildLoadMoreError(BuildContext context, Object? error) {
+    if (widget.loadMoreErrorBuilder != null) {
+      return widget.loadMoreErrorBuilder!(context, error);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(error?.toString() ?? "Something went wrong"),
+            const SizedBox(height: 8),
+            TextButton(onPressed: widget.controller.retry, child: const Text("Retry")),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _handleRefresh() async {

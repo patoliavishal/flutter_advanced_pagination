@@ -6,6 +6,9 @@ A controller-first pagination package for Flutter with page/offset/cursor suppor
 
 - Page, offset, and cursor-based pagination.
 - `PagedListView`, `PagedGridView`, and sliver variants.
+- List separators and reverse pagination support.
+- Load‑more error retry footer (default or custom).
+- Sliver empty/error builders for fully custom states.
 - Scroll prefetch to load ahead of the viewport.
 - Cache manager with stale-while-revalidate support.
 - `PagedLayoutBuilder` and per-widget builders for custom states.
@@ -16,7 +19,7 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  advanced_pagination: ^0.1.0
+  advanced_pagination: ^0.2.0
 ```
 
 Then run:
@@ -131,10 +134,22 @@ PagedGridView<int, Article>(
 );
 ```
 
+### PagedListView with separators + reverse
+
+```dart
+PagedListView<int, Article>(
+  controller: controller,
+  reverse: true,
+  separatorBuilder: (context, index) => const Divider(height: 1),
+  itemBuilder: (context, item, index) => ArticleTile(item),
+);
+```
+
 ### Sliver list/grid
 
 ```dart
 CustomScrollView(
+  // Use reverse: true here if you want a reversed sliver list/grid.
   slivers: [
     const SliverAppBar(title: Text("Sliver Grid")),
     PagedSliverGrid<int, Article>(
@@ -148,6 +163,17 @@ CustomScrollView(
       itemBuilder: (context, item, index) => ArticleTile(item),
     ),
   ],
+);
+```
+
+### Sliver empty / error builders
+
+```dart
+PagedSliverList<int, Article>(
+  controller: controller,
+  emptyBuilder: (_) => const Center(child: Text("No items")),
+  errorBuilder: (_, error) => const Center(child: Text("Load failed")),
+  itemBuilder: (context, item, index) => ArticleTile(item),
 );
 ```
 
@@ -181,6 +207,23 @@ PagedListView<int, Article>(
       return const Center(child: Text("Oops"));
     }
     return const SizedBox.shrink();
+  },
+  itemBuilder: (context, item, index) => ArticleTile(item),
+);
+```
+
+### Load‑more error retry footer
+
+```dart
+PagedListView<int, Article>(
+  controller: controller,
+  loadMoreErrorBuilder: (context, error) {
+    return Center(
+      child: TextButton(
+        onPressed: () => controller.retry(),
+        child: const Text("Retry loading more"),
+      ),
+    );
   },
   itemBuilder: (context, item, index) => ArticleTile(item),
 );
@@ -220,10 +263,14 @@ final controller = PaginationController.pageBased(
 
 - `autoLoad`: if `true`, loads the first page after build.
 - `enableRefresh`: enables pull-to-refresh in `PagedListView`.
+- `reverse`: reverses scroll direction (useful for chat UIs).
 - `preloadOffset`: how close to the end before `fetchNext()` triggers.
 - `enableScrollPrefetch`: enables early `prefetchNext()`.
 - `prefetchOffset`: how early prefetch starts.
 - `loadingBuilder`: custom loader widget (defaults to `CircularProgressIndicator`).
+- `separatorBuilder`: adds separators between list items.
+- `loadMoreErrorBuilder`: custom footer when loading more fails.
+- `emptyBuilder` / `errorBuilder`: customize sliver empty/error states.
 
 ## Controller API
 
@@ -231,6 +278,7 @@ final controller = PaginationController.pageBased(
 - `fetchNext()`: append next page.
 - `fetchPrevious()`: prepend previous page.
 - `prefetchNext()`: silent prefetch (no loader).
+- `prefetchPrevious()`: silent prefetch in the previous direction.
 - `retry()`: repeat last failed request.
 - `cancel()`: cancel active request.
 
@@ -253,4 +301,3 @@ For iOS on macOS, run `flutter run` and allow Xcode to handle signing if prompte
 ## Additional Information
 
 Pull requests and feedback are welcome. If you encounter any issues, please open a GitHub issue and include a minimal reproducible example.
-
